@@ -1,0 +1,25 @@
+[package]
+name = "icemelter"
+version = "0.0.0"
+description = "Tool to minimize files that trigger internal compiler errors (ICEs)"
+keywords = ["ice", "rustc"]
+edition = "2021"
+authors = ["Langston Barrett <langston.barrett@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/langston-barrett/icemelter"
+repository = "https://github.com/langston-barrett/icemelter"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+clap-verbosity-flag = { version = "2" }
+log = "0.4"
+nu-ansi-term = { version = "0.46" }
+num_cpus = { version = "1" }
+regex = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json"] }
+tree-sitter = "0.20"
+tree-sitter-rust = "0.20"
+treereduce = { git = "https://github.com/langston-barrett/treereduce" }
