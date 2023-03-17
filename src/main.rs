@@ -22,6 +22,10 @@ mod formatter;
 #[derive(Clone, Debug, clap::Parser)]
 #[command(author, version, about, long_about = None)]
 struct Args {
+    /// Allow introducing type/syntax/borrow errors to achieve smaller tests
+    #[arg(long)]
+    allow_errors: bool,
+
     /// Run a single thread and show stdout, stderr of rustc
     #[arg(short, long)]
     debug: bool,
@@ -195,22 +199,27 @@ pub fn main() -> Result<()> {
     )?;
 
     // New check: Don't introduce spurrious errors
-    let error_codes = check_initial_ice(&initial_check, rs.as_bytes())?;
-    for error_code in &error_codes {
-        debug!("Found error code {}", error_code);
-    }
-    let fresh_error_regex = error_regex(HashSet::from_iter(error_codes));
-    let uninteresting_regex = match args.uninteresting_stderr {
-        Some(u) => format!("(?m)({}|{})", u, fresh_error_regex),
-        None => format!("(?m){}", fresh_error_regex),
+    let uninteresting_stderr = if args.allow_errors {
+        args.uninteresting_stderr
+    } else {
+        let error_codes = check_initial_ice(&initial_check, rs.as_bytes())?;
+        for error_code in &error_codes {
+            debug!("Found error code {}", error_code);
+        }
+        let fresh_error_regex = error_regex(HashSet::from_iter(error_codes));
+        let uninteresting_regex = match args.uninteresting_stderr {
+            Some(u) => format!("(?m)({}|{})", u, fresh_error_regex),
+            None => format!("(?m){}", fresh_error_regex),
+        };
+        debug!("Error regex: {}", uninteresting_regex);
+        Some(uninteresting_regex)
     };
-    debug!("Error regex: {}", uninteresting_regex);
     let chk = check(
         args.debug,
         timeout,
         args.check,
         Some(args.interesting_stderr),
-        Some(uninteresting_regex),
+        uninteresting_stderr,
     )?;
 
     let node_types = NodeTypes::new(tree_sitter_rust::NODE_TYPES).unwrap();
