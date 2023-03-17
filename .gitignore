@@ -4,3 +4,5 @@ icemelter
 
 shell.nix
 .envrc
+ice.rs
+melted.rs

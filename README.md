@@ -3,17 +3,6 @@
 Icemelter is a tool to minimize Rust files that trigger internal compiler
 errors (ICEs).
 
-## WIP
-
-Icemelter is a work in progress! It can already effectively minimize ICEs, but
-these things should get done before it's ready for widespread use:
-
-- [x] Match `internal compiler error:` on stderr by default
-- [ ] Avoid introducing new syntax/type/scope errors
-- [ ] Logging
-- [ ] More docs
-- [ ] `--fast` flag
-
 ## Usage
 
 Icemelter works on standalone Rust files. If your file is named `ice.rs`, use

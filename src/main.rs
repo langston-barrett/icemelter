@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -7,11 +8,15 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use regex::Regex;
+use tracing::debug;
+use tracing_subscriber::fmt::format::FmtSpan;
 use treereduce::Check;
 use treereduce::CmdCheck;
 use treereduce::Config;
 use treereduce::NodeTypes;
 use treereduce::Original;
+
+mod formatter;
 
 /// A tool to minimize Rust files that trigger internal compiler errors (ICEs)
 #[derive(Clone, Debug, clap::Parser)]
@@ -26,7 +31,7 @@ struct Args {
         help_heading = "Interestingness check options",
         long,
         value_name = "REGEX",
-        default_value_t = String::from("internal compiler error:")
+        default_value_t = String::from("(internal compiler error:|error: the compiler unexpectedly panicked. this is a bug.)")
     )]
     interesting_stderr: String,
 
@@ -63,6 +68,28 @@ struct Args {
     check: Vec<String>,
 }
 
+#[inline]
+fn log_tracing_level(level: &log::Level) -> tracing::Level {
+    match level {
+        log::Level::Trace => tracing::Level::TRACE,
+        log::Level::Debug => tracing::Level::DEBUG,
+        log::Level::Info => tracing::Level::INFO,
+        log::Level::Warn => tracing::Level::WARN,
+        log::Level::Error => tracing::Level::ERROR,
+    }
+}
+
+#[inline]
+fn init_tracing(args: &Args) {
+    let builder = tracing_subscriber::fmt::fmt()
+        .with_span_events(FmtSpan::ENTER | FmtSpan::CLOSE)
+        .with_target(false)
+        .with_max_level(log_tracing_level(
+            &args.verbose.log_level().unwrap_or(log::Level::Info),
+        ));
+    builder.event_format(formatter::TerseFormatter).init();
+}
+
 fn read_file(file: &str) -> Result<String> {
     fs::read_to_string(file).with_context(|| format!("Failed to read file {}", file))
 }
@@ -75,16 +102,30 @@ fn parse(language: tree_sitter::Language, code: &str) -> Result<tree_sitter::Tre
     parser.parse(code, None).context("Failed to parse code")
 }
 
-// TODO: Collect initial warnings/errors from stderr
-fn check_initial_ice(chk: &CmdCheck, src: &[u8]) -> Result<()> {
-    if !chk
-        .interesting(src)
-        .context("Failed to check that initial input caused an ICE")?
-    {
+fn check_initial_ice(chk: &CmdCheck, src: &[u8]) -> Result<Vec<String>> {
+    let state = chk
+        .start(src)
+        .context("Failed to check that initial input caused an ICE")?;
+    let (interesting, _status, _stdout, stderr_bytes) = chk
+        .wait_with_output(state)
+        .context("Failed to check that initial input caused an ICE")?;
+    if !interesting {
         eprintln!("The file doesn't seem to produce an ICE.");
         std::process::exit(1);
     }
-    Ok(())
+    let error_code_regex =
+        Regex::new(r"(?m)^error\[E(?P<code>\d\d\d\d)\]: ").context("Internal error: Bad regex?")?;
+    let stderr = String::from_utf8_lossy(&stderr_bytes);
+    let mut error_codes = Vec::new();
+    for capture in error_code_regex.captures_iter(&stderr) {
+        error_codes.push(String::from(
+            capture
+                .name("code")
+                .context("Internal error: bad capture group name")?
+                .as_str(),
+        ));
+    }
+    Ok(error_codes)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -126,18 +167,52 @@ fn check(
     ))
 }
 
+// Regex to match errors other than those in the set
+fn error_regex(codes: HashSet<String>) -> String {
+    let mut rx = String::from(r"^error\[E(0000");
+    for n in 0..2000 {
+        let code = format!("{:0>4}", n);
+        if !codes.contains(&code) {
+            rx += &format!("|{code}");
+        }
+    }
+    rx += r")\]: ";
+    format!(r"(^error: [^i]|{})", rx)
+}
+
 pub fn main() -> Result<()> {
     let args = Args::parse();
+    init_tracing(&args);
     let language = tree_sitter_rust::language();
     let rs = read_file(&args.file)?;
+    let timeout = Duration::from_millis(args.timeout);
+    let initial_check = check(
+        args.debug,
+        timeout,
+        args.check.clone(),
+        Some(args.interesting_stderr.clone()),
+        args.uninteresting_stderr.clone(),
+    )?;
+
+    // New check: Don't introduce spurrious errors
+    let error_codes = check_initial_ice(&initial_check, rs.as_bytes())?;
+    for error_code in &error_codes {
+        debug!("Found error code {}", error_code);
+    }
+    let fresh_error_regex = error_regex(HashSet::from_iter(error_codes));
+    let uninteresting_regex = match args.uninteresting_stderr {
+        Some(u) => format!("(?m)({}|{})", u, fresh_error_regex),
+        None => format!("(?m){}", fresh_error_regex),
+    };
+    debug!("Error regex: {}", uninteresting_regex);
     let chk = check(
         args.debug,
-        Duration::from_millis(args.timeout),
+        timeout,
         args.check,
         Some(args.interesting_stderr),
-        args.uninteresting_stderr,
+        Some(uninteresting_regex),
     )?;
-    check_initial_ice(&chk, rs.as_bytes())?;
+
     let node_types = NodeTypes::new(tree_sitter_rust::NODE_TYPES).unwrap();
     let tree = parse(language, &rs).unwrap();
     match treereduce::treereduce_multi_pass(
