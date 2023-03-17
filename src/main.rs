@@ -9,6 +9,7 @@ use clap::Parser;
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use regex::Regex;
 use tracing::debug;
+use tracing::info;
 use tracing_subscriber::fmt::format::FmtSpan;
 use treereduce::Check;
 use treereduce::CmdCheck;
@@ -221,7 +222,7 @@ pub fn main() -> Result<()> {
     match treereduce::treereduce_multi_pass(
         language,
         node_types,
-        Original::new(tree, rs.into_bytes()),
+        Original::new(tree, rs.clone().into_bytes()),
         Config {
             check: chk,
             jobs: args.jobs,
@@ -232,6 +233,9 @@ pub fn main() -> Result<()> {
     ) {
         Err(e) => eprintln!("Failed to reduce! {e}"),
         Ok((reduced, _)) => {
+            if reduced.text == rs.as_bytes() {
+                info!("Unable to reduce, try --allow-errors.");
+            }
             std::fs::write(&args.output, reduced.text).with_context(|| {
                 format!("Failed to write reduced file to {}", args.output.display())
             })?;
