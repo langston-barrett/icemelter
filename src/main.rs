@@ -101,7 +101,7 @@ fn parse(language: tree_sitter::Language, code: &str) -> Result<tree_sitter::Tre
     parser.parse(code, None).context("Failed to parse code")
 }
 
-fn check_initial_ice(chk: &CmdCheck, src: &[u8]) -> Result<Vec<String>> {
+fn check_initial_ice(chk: &CmdCheck, src: &[u8]) -> Result<(Vec<String>, String)> {
     let state = chk
         .start(src)
         .context("Failed to check that initial input caused an ICE")?;
@@ -124,7 +124,7 @@ fn check_initial_ice(chk: &CmdCheck, src: &[u8]) -> Result<Vec<String>> {
                 .as_str(),
         ));
     }
-    Ok(error_codes)
+    Ok((error_codes, String::from(stderr)))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -169,14 +169,18 @@ fn check(
 // Regex to match errors other than those in the set
 fn error_regex(codes: HashSet<String>) -> String {
     let mut rx = String::from(r"^error\[E(0000");
-    for n in 0..2000 {
+    // Last is E0789, this should be safe for a bit...
+    // https://doc.rust-lang.org/error_codes/error-index.html
+    for n in 0..1000 {
         let code = format!("{:0>4}", n);
         if !codes.contains(&code) {
             rx += &format!("|{code}");
         }
     }
     rx += r")\]: ";
-    format!(r"(^error: [^i]|{})", rx)
+    // error: internal...
+    // error: the compiler...
+    format!(r"(^error: [^it]|{})", rx)
 }
 
 pub fn main() -> Result<()> {
@@ -197,7 +201,7 @@ pub fn main() -> Result<()> {
     let uninteresting_stderr = if args.allow_errors {
         args.uninteresting_stderr
     } else {
-        let error_codes = check_initial_ice(&initial_check, rs.as_bytes())?;
+        let (error_codes, initial_stderr) = check_initial_ice(&initial_check, rs.as_bytes())?;
         for error_code in &error_codes {
             debug!("Found error code {}", error_code);
         }
@@ -206,7 +210,11 @@ pub fn main() -> Result<()> {
             Some(u) => format!("(?m)({}|{})", u, fresh_error_regex),
             None => format!("(?m){}", fresh_error_regex),
         };
+        debug!("Initial stderr: {}", initial_stderr);
         debug!("Error regex: {}", uninteresting_regex);
+        debug_assert!(!Regex::new(&uninteresting_regex)
+            .unwrap()
+            .is_match(&initial_stderr));
         Some(uninteresting_regex)
     };
     let chk = check(
