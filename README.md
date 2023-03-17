@@ -3,6 +3,11 @@
 Icemelter is a tool to minimize Rust files that trigger internal compiler
 errors (ICEs).
 
+It really works: it reduced a ~250 line file to just 4 lines in
+[rustc issue #107454][#107454].
+
+[#107454]: https://github.com/rust-lang/rust/issues/107454
+
 ## Usage
 
 Icemelter works on standalone Rust files. If your file is named `ice.rs`, use
