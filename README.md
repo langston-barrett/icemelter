@@ -5,13 +5,14 @@ errors (ICEs).
 
 ## WIP
 
-Icemelter is a work in progress! These following things should get done before
-it's ready to use:
+Icemelter is a work in progress! It can already effectively minimize ICEs, but
+these things should get done before it's ready for widespread use:
 
 - [x] Match `internal compiler error:` on stderr by default
 - [ ] Avoid introducing new syntax/type/scope errors
 - [ ] Logging
 - [ ] More docs
+- [ ] `--fast` flag
 
 ## Usage
 
@@ -31,6 +32,8 @@ Here's an example that uses a different compiler and adds a flag:
 icemelter ice.rs -- rustc +nightly --crate-type=lib
 ```
 
+For more options, see `--help`.
+
 ## Installation
 
 ### From a release
@@ -44,7 +47,7 @@ Rust compiler and the [Cargo][cargo] build tool. [rustup][rustup] makes it very
 easy to obtain these. Then, to install the reducer for the language `<LANG>`,
 run:
 
-```
+```sh
 cargo install icemelter
 ```
 
@@ -55,14 +58,14 @@ This will install binaries in `~/.cargo/bin` by default.
 To build from source, you'll need the Rust compiler and the [Cargo][cargo] build
 tool. [rustup][rustup] makes it very easy to obtain these. Then, get the source:
 
-```bash
+```sh
 git clone https://github.com/langston-barrett/icemelter
 cd icemelter
 ```
 
 Finally, build everything:
 
-```bash
+```sh
 cargo build --release
 ```
 
