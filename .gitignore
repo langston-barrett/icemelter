@@ -1,4 +1,6 @@
 /target
+# Binary, created in release workflow
+icemelter
 
 shell.nix
 .envrc

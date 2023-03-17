@@ -135,7 +135,7 @@ checksum = "fed44880c466736ef9a5c5b5facefb5ed0785676d0c02d612db14e54f0d84286"
 
 [[package]]
 name = "icemelter"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -580,8 +580,9 @@ dependencies = [
 
 [[package]]
 name = "treereduce"
-version = "0.1.0"
-source = "git+https://github.com/langston-barrett/treereduce#ca1964aeded5463ea6e7cf369815c66084dec405"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9da25532a7b94cffe84824cfc6c3481f74fb1fed3880b301b93883428c63c1ee"
 dependencies = [
  "log",
  "regex",

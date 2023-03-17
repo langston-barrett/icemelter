@@ -147,10 +147,10 @@ pub fn main() -> Result<()> {
         Config {
             check: chk,
             jobs: args.jobs,
-            min_reduction: 2,
+            min_reduction: 1,
             replacements: HashMap::new(),
         },
-        Some(8),
+        None, // max passes
     ) {
         Err(e) => eprintln!("Failed to reduce! {e}"),
         Ok((reduced, _)) => {

@@ -12,6 +12,7 @@ it's ready to use:
 - [ ] Avoid introducing new syntax/type/scope errors
 - [ ] Logging
 - [ ] More docs
+- [ ] `--fast` flag
 
 ## Usage
 
@@ -31,6 +32,8 @@ Here's an example that uses a different compiler and adds a flag:
 icemelter ice.rs -- rustc +nightly --crate-type=lib
 ```
 
+For more options, see `--help`.
+
 ## Installation
 
 ### From a release
@@ -45,8 +48,7 @@ easy to obtain these. Then, to install the reducer for the language `<LANG>`,
 run:
 
 ```
-cargo install icemelter
-```
+cargo install icemelter ```
 
 This will install binaries in `~/.cargo/bin` by default.
 
