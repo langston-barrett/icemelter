@@ -32,7 +32,6 @@ struct Args {
 
     /// Regex to match stderr
     #[arg(
-        help_heading = "Interestingness check options",
         long,
         value_name = "REGEX",
         default_value_t = String::from("(internal compiler error:|error: the compiler unexpectedly panicked. this is a bug.)")
@@ -40,12 +39,7 @@ struct Args {
     interesting_stderr: String,
 
     /// Regex to match *uninteresting* stderr, overrides interesting regex
-    #[arg(
-        help_heading = "Interestingness check options",
-        long,
-        value_name = "REGEX",
-        requires = "interesting_stderr"
-    )]
+    #[arg(long, value_name = "REGEX", requires = "interesting_stderr")]
     uninteresting_stderr: Option<String>,
 
     /// Number of threads
