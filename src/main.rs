@@ -242,7 +242,12 @@ pub fn main() -> Result<()> {
         Err(e) => eprintln!("Failed to reduce! {e}"),
         Ok((reduced, _)) => {
             if reduced.text == rs.as_bytes() {
-                info!("Unable to reduce, try --allow-errors.");
+                if args.allow_errors {
+                    info!("Unable to reduce! Sorry.");
+                    info!("If you think this test case is reducible, please file an issue!");
+                } else {
+                    info!("Unable to reduce, try --allow-errors.");
+                }
             }
             std::fs::write(&args.output, reduced.text).with_context(|| {
                 format!("Failed to write reduced file to {}", args.output.display())
