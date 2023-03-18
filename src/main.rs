@@ -10,6 +10,7 @@ use clap::Parser;
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use regex::Regex;
 use tracing::debug;
+use tracing::error;
 use tracing::info;
 use tracing_subscriber::fmt::format::FmtSpan;
 use treereduce::Check;
@@ -36,7 +37,7 @@ struct Args {
     #[arg(
         long,
         value_name = "REGEX",
-        default_value_t = String::from("(internal compiler error:|error: the compiler unexpectedly panicked. this is a bug.)")
+        default_value_t = String::from(r"(internal compiler error:|error: the compiler unexpectedly panicked\. this is a bug\.)")
     )]
     interesting_stderr: String,
 
@@ -114,7 +115,7 @@ fn check_initial_ice(chk: &CmdCheck, src: &[u8]) -> Result<(Vec<String>, String)
         .wait_with_output(state)
         .context("Failed to check that initial input caused an ICE")?;
     if !interesting {
-        eprintln!("The file doesn't seem to produce an ICE.");
+        error!("The file doesn't seem to produce an ICE.");
         std::process::exit(1);
     }
     let error_code_regex =
@@ -141,7 +142,7 @@ fn check(
     uninteresting_stderr: Option<String>,
 ) -> Result<CmdCheck> {
     if check.is_empty() {
-        eprintln!("Internal error: empty interestingness check!");
+        error!("Internal error: empty interestingness check!");
         std::process::exit(1);
     }
     let mut argv = check;
@@ -291,7 +292,7 @@ pub fn main() -> Result<()> {
         reduce_config,
         None, // max passes
     ) {
-        Err(e) => eprintln!("Failed to reduce! {e}"),
+        Err(e) => error!("Failed to reduce! {e}"),
         Ok((reduced, _)) => {
             if reduced.text == rs.as_bytes() {
                 if args.allow_errors {
