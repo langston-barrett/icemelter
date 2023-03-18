@@ -10,7 +10,7 @@ Icemelter automates steps in debugging rustc internal compiler errors (ICEs).
 - Generates copy-pasteable Markdown reports
 - Optionally downloads MCVEs from Github
 
-\*It really works: Icemelter reduced a ~250 line file to just 4 lines in [#107454][#107454]).
+\*It really works: Icemelter reduced a ~250 line file to just 4 lines in [#107454][#107454].
 
 More features are [planned][issues].
 
