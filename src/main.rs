@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -183,6 +184,24 @@ fn error_regex(codes: HashSet<String>) -> String {
     format!(r"(^error: [^it]|{})", rx)
 }
 
+// NB: errors from this function are ignored as non-fatal
+fn fmt(check: &CmdCheck, file: &[u8]) -> Result<Option<Vec<u8>>> {
+    debug!("Formatting reduced file with rustfmt");
+    let tmp = tempfile::Builder::new()
+        .prefix("icemelter")
+        .suffix(".rs")
+        .tempfile()?;
+    let path = tmp.path();
+    std::fs::write(path, file)?;
+    Command::new("rustfmt").arg(path).status()?;
+    let formatted = std::fs::read(path)?;
+    if check.interesting(&formatted)? {
+        Ok(Some(formatted))
+    } else {
+        Ok(None)
+    }
+}
+
 pub fn main() -> Result<()> {
     let args = Args::parse();
     init_tracing(&args);
@@ -227,16 +246,17 @@ pub fn main() -> Result<()> {
 
     let node_types = NodeTypes::new(tree_sitter_rust::NODE_TYPES).unwrap();
     let tree = parse(language, &rs).unwrap();
+    let reduce_config = Config {
+        check: chk.clone(),
+        jobs: args.jobs,
+        min_reduction: 1,
+        replacements: HashMap::new(),
+    };
     match treereduce::treereduce_multi_pass(
         language,
         node_types,
         Original::new(tree, rs.clone().into_bytes()),
-        Config {
-            check: chk,
-            jobs: args.jobs,
-            min_reduction: 1,
-            replacements: HashMap::new(),
-        },
+        reduce_config,
         None, // max passes
     ) {
         Err(e) => eprintln!("Failed to reduce! {e}"),
@@ -249,9 +269,18 @@ pub fn main() -> Result<()> {
                     info!("Unable to reduce, try --allow-errors.");
                 }
             }
-            std::fs::write(&args.output, reduced.text).with_context(|| {
+
+            let formatted = match fmt(&chk, &reduced.text) {
+                Err(_) | Ok(None) => {
+                    debug!("Failed to reduce with rustfmt");
+                    reduced.text
+                }
+                Ok(Some(formatted)) => formatted,
+            };
+            std::fs::write(&args.output, formatted).with_context(|| {
                 format!("Failed to write reduced file to {}", args.output.display())
             })?;
+            info!("Reduced file written to {}", args.output.display());
         }
     }
 

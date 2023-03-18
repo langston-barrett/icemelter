@@ -144,6 +144,7 @@ dependencies = [
  "nu-ansi-term",
  "num_cpus",
  "regex",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
  "tree-sitter",
