@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::process::Stdio;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -199,7 +200,11 @@ fn fmt(check: &CmdCheck, file: &[u8]) -> Result<Option<Vec<u8>>> {
         .tempfile()?;
     let path = tmp.path();
     std::fs::write(path, file)?;
-    Command::new("rustfmt").arg(path).status()?;
+    Command::new("rustfmt")
+        .arg(path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()?;
     let formatted = std::fs::read(path)?;
     if check.interesting(&formatted)? {
         Ok(Some(formatted))
