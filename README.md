@@ -1,12 +1,22 @@
 # Icemelter
 
-Icemelter is a tool to minimize Rust files that trigger internal compiler
-errors (ICEs).
+Icemelter automates steps in debugging rustc internal compiler errors (ICEs).
 
-It really works: it reduced a ~250 line file to just 4 lines in
-[rustc issue #107454][#107454].
+## Features
+
+- Automatically minimizes MCVEs (it really works: Icemelter reduced a ~250
+  line file to just 4 lines in [rustc issue #107454][#107454]
+- Integrates with [cargo-bisect-rustc][cargo-bisect-rustc]
+- Formats MCVEs if doing so keeps the ICE
+- Generates copy-pasteable Markdown reports
+- Optionally downloads files that cause the ICE (MCVEs) from Github (no more
+  copying and pasting!)
+
+More features are [planned][issues].
 
 [#107454]: https://github.com/rust-lang/rust/issues/107454
+[cargo-bisect-rustc]: https://github.com/rust-lang/cargo-bisect-rustc
+[issues]: https://github.com/langston-barrett/icemelter/issues
 
 ## Usage
 
@@ -17,8 +27,11 @@ it like so:
 icemelter ice.rs
 ```
 
-By default, the result is stored to `melted.rs` (this can be changed with
-`--output`).
+By default, the result is stored to `melted.rs`. A few helpful flags:
+
+- `--output`: Change where the output file is written
+- `--bisect`: Bisect the regression with cargo-bisect-rustc
+- `--markdown`: Output a copy-pasteable report
 
 Here's an example that uses a different compiler and adds a flag:
 
@@ -67,7 +80,8 @@ You can find binaries in `target/release`. Run tests with `cargo test`.
 
 ## How it works
 
-Icemelter is based on [`treereduce-rust`][treereduce].
+Icemelter's minimization capabilities are built on
+[`treereduce-rust`][treereduce].
 
 [cargo]: https://doc.rust-lang.org/cargo/
 [crates-io]: https://crates.io/
