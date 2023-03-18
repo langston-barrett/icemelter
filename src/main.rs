@@ -6,7 +6,7 @@ use std::process::Command;
 use std::process::Stdio;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use regex::Regex;
@@ -21,6 +21,7 @@ use treereduce::NodeTypes;
 use treereduce::Original;
 
 mod formatter;
+#[cfg(feature = "fetch")]
 mod github;
 
 /// A tool to minimize Rust files that trigger internal compiler errors (ICEs)
@@ -101,6 +102,38 @@ fn read_file(file: &str) -> Result<String> {
     fs::read_to_string(file).with_context(|| format!("Failed to read file {}", file))
 }
 
+#[cfg(feature = "fetch")]
+fn retrieve_from_github(issue_number: usize) -> Result<String> {
+    let gh_config = github::Config::from_env()
+        .with_context(|| format!("Missing {} environment variable", github::Config::ENV_VAR))?;
+    let issue = github::get_issue(&gh_config, issue_number)
+        .context("Failed to retrieve issue from Github")?;
+    debug_assert_eq!(issue.number, issue_number);
+    let mut reproduction = Vec::new();
+    let mut in_code_section = false;
+    let mut in_code = false;
+    for line in issue.body.lines() {
+        if in_code {
+            if line.starts_with("```") {
+                in_code = false;
+                continue;
+            }
+            reproduction.push(line);
+        }
+        if line.starts_with("### Code") {
+            in_code_section = true;
+        } else if line.starts_with('#') && in_code_section {
+            in_code_section = false;
+        }
+        if (line.starts_with("```rust") || line.starts_with("```Rust")) && in_code_section {
+            in_code = true;
+        }
+    }
+    let reproduction_str = reproduction.join("\n");
+    debug!("Reproduction:\n{}", reproduction_str);
+    Ok(reproduction_str)
+}
+
 fn retrieve(source: &str) -> Result<String> {
     let issue_number_rx =
         Regex::new(r"^#(\d+)").context("Internal error: bad issue number regex")?;
@@ -113,38 +146,15 @@ fn retrieve(source: &str) -> Result<String> {
             debug!("Source looks like an issue number");
             let issue_number_str = m.as_str();
             debug!("Match: {}", issue_number_str);
-            let issue_number = issue_number_str[1..]
-                .parse::<usize>()
-                .context("Internal error: Couldn't extract number from issue number regex")?;
-            let gh_config = github::Config::from_env().with_context(|| {
-                format!("Missing {} environment variable", github::Config::ENV_VAR)
-            })?;
-            let issue = github::get_issue(&gh_config, issue_number)
-                .context("Failed to retrieve issue from Github")?;
-            debug_assert_eq!(issue.number, issue_number);
-            let mut reproduction = Vec::new();
-            let mut in_code_section = false;
-            let mut in_code = false;
-            for line in issue.body.lines() {
-                if in_code {
-                    if line.starts_with("```") {
-                        in_code = false;
-                        continue;
-                    }
-                    reproduction.push(line);
-                }
-                if line.starts_with("### Code") {
-                    in_code_section = true;
-                } else if line.starts_with('#') && in_code_section {
-                    in_code_section = false;
-                }
-                if (line.starts_with("```rust") || line.starts_with("```Rust")) && in_code_section {
-                    in_code = true;
-                }
+            #[cfg(feature = "fetch")]
+            {
+                let issue_number = issue_number_str[1..]
+                    .parse::<usize>()
+                    .context("Internal error: Couldn't extract number from issue number regex")?;
+                return retrieve_from_github(issue_number);
             }
-            let reproduction_str = reproduction.join("\n");
-            debug!("Reproduction:\n{}", reproduction_str);
-            Ok(reproduction_str)
+            #[cfg(not(feature = "fetch"))]
+            Err(anyhow!("You provided an issue number, but this version of Icemelter was compiled without the 'fetch' feature."))
         }
     }
 }
