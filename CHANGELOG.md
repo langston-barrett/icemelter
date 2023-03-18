@@ -2,13 +2,21 @@
 
 <!-- https://keepachangelog.com/en/1.0.0/ -->
 
-## next
+## [0.3.0] - 2023-03-17
 
 ### Added
 
 - Added a flag to produce a Markdown issue comment
+- Dockerfile
 - Icemelter now runs `rustfmt` on the reduced file and keeps the result if it
   maintains the ICE.
+- Integration with cargo-bisect-rustc
+- Icemaker can now fetch MCVEs directly from Github issues when compiled with
+  `--features=fetch`
+
+### Changed
+
+- Improved error messages in a variety of situations
 
 ## [0.2.0] - 2023-03-17
 
