@@ -4,12 +4,13 @@ Icemelter automates steps in debugging rustc internal compiler errors (ICEs).
 
 ## Features
 
-- Automatically minimizes files that cause the ICE (MCVEs) (it really works:
-  Icemelter reduced a ~250 line file to just 4 lines in [#107454][#107454])
-- Integrates with [cargo-bisect-rustc][cargo-bisect-rustc]
-- Formats MCVEs if doing so keeps the ICE
+- Automatically minimizes files that cause the ICE (MCVEs)\* 
+- Runs [cargo-bisect-rustc][cargo-bisect-rustc]
+- `rustfmt`s MCVEs if doing so keeps the ICE
 - Generates copy-pasteable Markdown reports
-- Optionally downloads MCVEs from Github (no more copying and pasting!)
+- Optionally downloads MCVEs from Github
+
+\*It really works: Icemelter reduced a ~250 line file to just 4 lines in [#107454][#107454]).
 
 More features are [planned][issues].
 
