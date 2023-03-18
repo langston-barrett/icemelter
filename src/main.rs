@@ -108,6 +108,7 @@ fn parse(language: tree_sitter::Language, code: &str) -> Result<tree_sitter::Tre
 }
 
 fn check_initial_ice(chk: &CmdCheck, src: &[u8]) -> Result<(Vec<String>, String)> {
+    debug!("Doing initial check for ICE");
     let state = chk
         .start(src)
         .context("Failed to check that initial input caused an ICE")?;
