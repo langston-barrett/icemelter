@@ -320,7 +320,7 @@ fn fmt(check: &CmdCheck, file: &[u8]) -> Result<FormatResult> {
     }
 }
 
-fn bisect(file: &[u8], stderr_regex: &str) -> Result<process::Output> {
+fn bisect(args: Vec<String>, file: &[u8], stderr_regex: &str) -> Result<process::Output> {
     let rs_tmp = tempfile::Builder::new()
         .prefix("icemelter-")
         .suffix(".rs")
@@ -341,10 +341,15 @@ fn bisect(file: &[u8], stderr_regex: &str) -> Result<process::Output> {
             script_path,
             format!(
                 r#"#!/usr/bin/env bash
-if rustup run "${{RUSTUP_TOOLCHAIN}}" rustc {} 2>&1 | egrep '{}'; then
+if rustup run "${{RUSTUP_TOOLCHAIN}}" rustc {} {} 2>&1 | egrep '{}'; then
   exit 1
 fi
-exit 0"#,
+exit 0
+"#,
+                args.iter()
+                    .map(|s| format!("'{s}'"))
+                    .collect::<Vec<_>>()
+                    .join(" "),
                 rs_path.display(),
                 stderr_regex
             ),
@@ -352,7 +357,13 @@ exit 0"#,
         script_tmp.keep()?.1
     };
     debug!("Wrote script to {}", script_path.display());
-    // Text file busy
+    assert!(!Command::new(&script_path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .env("RUSTUP_TOOLCHAIN", "nightly")
+        .status()
+        .unwrap()
+        .success());
     let out = Command::new("cargo-bisect-rustc")
         .arg("--script")
         .arg(script_path)
@@ -365,8 +376,21 @@ exit 0"#,
     Ok(out)
 }
 
+fn rustc_version(mut argv: Vec<String>) -> String {
+    let cmd = argv[0].clone();
+    argv.remove(0);
+    Command::new(cmd)
+        .args(argv)
+        .arg("--version")
+        .arg("--verbose")
+        .output()
+        .map(|o| String::from(String::from_utf8_lossy(o.stdout.as_slice())))
+        .unwrap_or_else(|_| String::from("<unknown>"))
+}
+
 fn markdown(
     to: PathBuf,
+    argv: Vec<String>,
     file: Vec<u8>,
     did_reduce: bool,
     formatted: &FormatResult,
@@ -396,7 +420,18 @@ fn markdown(
 <details><summary>Details</summary>
 <p>
 
+rustc version:
+```
+{}
+```
+
 Icemelter version: v{}
+
+Icemelter command line:
+
+```sh
+{}
+```
 
 @rustbot label +S-bug-has-mcve
 
@@ -417,7 +452,9 @@ Icemelter version: v{}
             String::new()
         },
         bisect_report.unwrap_or_default(),
-        env!("CARGO_PKG_VERSION")
+        rustc_version(argv),
+        env!("CARGO_PKG_VERSION"),
+        std::env::args().map(|s| format!("'{s}'")).collect::<Vec<_>>().join(" "),
     );
     fs::write(&to, report)
         .with_context(|| format!("When writing Markdown report to {}", to.display()))?;
@@ -467,7 +504,7 @@ pub fn main() -> Result<()> {
     let chk = check(
         args.debug,
         timeout,
-        args.check,
+        args.check.clone(),
         Some(args.interesting_stderr.clone()),
         uninteresting_stderr,
     )?;
@@ -498,7 +535,12 @@ pub fn main() -> Result<()> {
 
     let bisect_report = if args.bisect {
         info!("Step 5/{STEPS}: Bisecting (this can take a very long time)...");
-        let out = bisect(formatted.as_slice(), &args.interesting_stderr)?;
+        let mut rustc_args = args.check.clone();
+        rustc_args.remove(0);
+        if !rustc_args.is_empty() && rustc_args[0].starts_with('+') {
+            rustc_args.remove(0);
+        }
+        let out = bisect(rustc_args, formatted.as_slice(), &args.interesting_stderr)?;
         std::fs::write("cargo-bisect-rustc.stdout.txt", &out.stdout)?;
         std::fs::write("cargo-bisect-rustc.stderr.txt", &out.stderr)?;
         info!("Wrote to cargo-bisect-rustc.std{{out,err}}.txt");
@@ -540,6 +582,7 @@ pub fn main() -> Result<()> {
     if args.markdown {
         markdown(
             args.output.with_extension("md"),
+            args.check,
             formatted,
             did_reduce,
             &fmt_result,
