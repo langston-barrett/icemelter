@@ -369,7 +369,8 @@ pub fn main() -> Result<()> {
     )?;
     let reduced =
         reduce(&rs, args.jobs, chk.clone()).context("Failed when reducing the program")?;
-    if reduced == rs.as_bytes() {
+    let did_reduce = reduced == rs.as_bytes();
+    if did_reduce {
         if args.allow_errors {
             info!("Unable to reduce! Sorry.");
             info!("If you think this test case is reducible, please file an issue!");
@@ -390,9 +391,12 @@ pub fn main() -> Result<()> {
         }
         Ok(Some(formatted)) => formatted,
     };
-    std::fs::write(&args.output, &formatted)
-        .with_context(|| format!("Failed to write reduced file to {}", args.output.display()))?;
-    info!("Reduced file written to {}", args.output.display());
+    if did_reduce {
+        std::fs::write(&args.output, &formatted).with_context(|| {
+            format!("Failed to write reduced file to {}", args.output.display())
+        })?;
+        info!("Reduced file written to {}", args.output.display());
+    }
 
     if args.markdown {
         markdown(args.output.with_extension("md"), formatted)?;
