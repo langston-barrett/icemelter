@@ -386,6 +386,8 @@ fn rustc_version(mut argv: Vec<String>) -> String {
         .output()
         .map(|o| String::from(String::from_utf8_lossy(o.stdout.as_slice())))
         .unwrap_or_else(|_| String::from("<unknown>"))
+        .trim()
+        .to_string()
 }
 
 fn markdown(
@@ -550,12 +552,20 @@ pub fn main() -> Result<()> {
             warn!("cargo-bisect-rustc failed");
         }
         let mut bisect_report = Vec::with_capacity(12);
-        let mut headings = 0;
+        let mut eq_headings = 0;
+        let mut ast_headings = 0;
         let stderr_str = String::from_utf8_lossy(out.stderr.as_slice());
         for line in stderr_str.lines() {
+            if line.starts_with(
+                "********************************************************************************",
+            ) {
+                ast_headings += 1;
+            } else if ast_headings == 1 {
+                bisect_report.push(line);
+            }
             if line.starts_with("==================================================================================") {
-                headings +=1;
-            } else if headings >= 2 {
+                eq_headings +=1;
+            } else if eq_headings >= 2 {
                 bisect_report.push(line);
             }
         }
