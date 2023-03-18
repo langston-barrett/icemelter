@@ -6,6 +6,7 @@
 
 ### Added
 
+- Added a flag to produce a Markdown issue comment
 - Icemelter now runs `rustfmt` on the reduced file and keeps the result if it
   maintains the ICE.
 

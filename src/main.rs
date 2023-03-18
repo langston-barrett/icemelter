@@ -48,7 +48,11 @@ struct Args {
     #[arg(short, long, default_value_t = num_cpus::get())]
     jobs: usize,
 
-    /// Directory to output to
+    /// Also output markdown
+    #[arg(long)]
+    markdown: bool,
+
+    /// Where to save reduced test case
     #[arg(short, long, default_value_os = "melted.rs")]
     output: PathBuf,
 
@@ -202,6 +206,34 @@ fn fmt(check: &CmdCheck, file: &[u8]) -> Result<Option<Vec<u8>>> {
     }
 }
 
+fn markdown(to: PathBuf, file: Vec<u8>) -> Result<()> {
+    let s = String::from_utf8(file).context("When writing Markdown")?;
+    std::fs::write(
+        &to,
+        format!(
+            "Minimized with [Icemelter](https://github.com/langston-barrett/icemelter):
+```rust
+{}
+```
+
+<details><summary>Details</summary>
+<p>
+
+Icemelter version: v{}
+
+@rustbot label +S-bug-has-mcve 
+
+</p>
+</details>
+
+            ",
+            s,
+            env!("CARGO_PKG_VERSION")
+        ),
+    )
+    .with_context(|| format!("When writing Markdown report to {}", to.display()))
+}
+
 pub fn main() -> Result<()> {
     let args = Args::parse();
     init_tracing(&args);
@@ -277,10 +309,14 @@ pub fn main() -> Result<()> {
                 }
                 Ok(Some(formatted)) => formatted,
             };
-            std::fs::write(&args.output, formatted).with_context(|| {
+            std::fs::write(&args.output, &formatted).with_context(|| {
                 format!("Failed to write reduced file to {}", args.output.display())
             })?;
             info!("Reduced file written to {}", args.output.display());
+
+            if args.markdown {
+                markdown(args.output.with_extension("md"), formatted)?;
+            }
         }
     }
 
