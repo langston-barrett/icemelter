@@ -191,7 +191,29 @@ fn error_regex(codes: HashSet<String>) -> String {
     format!(r"(^error: [^it]|{})", rx)
 }
 
+fn reduce(rs: &str, jobs: usize, chk: CmdCheck) -> Result<Vec<u8>> {
+    let language = tree_sitter_rust::language();
+    let node_types = NodeTypes::new(tree_sitter_rust::NODE_TYPES).unwrap();
+    let tree = parse(language, rs).unwrap();
+    let reduce_config = Config {
+        check: chk,
+        jobs,
+        min_reduction: 1,
+        replacements: HashMap::new(),
+    };
+    let (reduced, _) = treereduce::treereduce_multi_pass(
+        language,
+        node_types,
+        Original::new(tree, rs.as_bytes().to_vec()),
+        reduce_config,
+        None, // max passes
+    )
+    .context("Failed when reducing the program")?;
+    Ok(reduced.text)
+}
+
 // NB: errors from this function are ignored as non-fatal
+// TODO: Strip leading/trailing whitespace
 fn fmt(check: &CmdCheck, file: &[u8]) -> Result<Option<Vec<u8>>> {
     debug!("Formatting reduced file with rustfmt");
     let tmp = tempfile::Builder::new()
@@ -244,9 +266,10 @@ Icemelter version: v{}
 pub fn main() -> Result<()> {
     let args = Args::parse();
     init_tracing(&args);
-    let language = tree_sitter_rust::language();
     let rs = read_file(&args.file)?;
     let timeout = Duration::from_millis(args.timeout);
+
+    debug!("Step 1/3: Configuring...");
     let initial_check = check(
         args.debug,
         timeout,
@@ -254,8 +277,6 @@ pub fn main() -> Result<()> {
         Some(args.interesting_stderr.clone()),
         args.uninteresting_stderr.clone(),
     )?;
-
-    // New check: Don't introduce spurrious errors
     let uninteresting_stderr = if args.allow_errors {
         args.uninteresting_stderr
     } else {
@@ -275,6 +296,8 @@ pub fn main() -> Result<()> {
             .is_match(&initial_stderr));
         Some(uninteresting_regex)
     };
+
+    debug!("Step 2/3: Reducing...");
     let chk = check(
         args.debug,
         timeout,
@@ -282,49 +305,31 @@ pub fn main() -> Result<()> {
         Some(args.interesting_stderr),
         uninteresting_stderr,
     )?;
-
-    let node_types = NodeTypes::new(tree_sitter_rust::NODE_TYPES).unwrap();
-    let tree = parse(language, &rs).unwrap();
-    let reduce_config = Config {
-        check: chk.clone(),
-        jobs: args.jobs,
-        min_reduction: 1,
-        replacements: HashMap::new(),
-    };
-    match treereduce::treereduce_multi_pass(
-        language,
-        node_types,
-        Original::new(tree, rs.clone().into_bytes()),
-        reduce_config,
-        None, // max passes
-    ) {
-        Err(e) => error!("Failed to reduce! {e}"),
-        Ok((reduced, _)) => {
-            if reduced.text == rs.as_bytes() {
-                if args.allow_errors {
-                    info!("Unable to reduce! Sorry.");
-                    info!("If you think this test case is reducible, please file an issue!");
-                } else {
-                    info!("Unable to reduce, try --allow-errors.");
-                }
-            }
-
-            let formatted = match fmt(&chk, &reduced.text) {
-                Err(_) | Ok(None) => {
-                    debug!("Failed to reduce with rustfmt");
-                    reduced.text
-                }
-                Ok(Some(formatted)) => formatted,
-            };
-            std::fs::write(&args.output, &formatted).with_context(|| {
-                format!("Failed to write reduced file to {}", args.output.display())
-            })?;
-            info!("Reduced file written to {}", args.output.display());
-
-            if args.markdown {
-                markdown(args.output.with_extension("md"), formatted)?;
-            }
+    let reduced =
+        reduce(&rs, args.jobs, chk.clone()).context("Failed when reducing the program")?;
+    if reduced == rs.as_bytes() {
+        if args.allow_errors {
+            info!("Unable to reduce! Sorry.");
+            info!("If you think this test case is reducible, please file an issue!");
+        } else {
+            info!("Unable to reduce, try --allow-errors.");
         }
+    }
+
+    debug!("Step 3/3: Formatting...");
+    let formatted = match fmt(&chk, &reduced) {
+        Err(_) | Ok(None) => {
+            debug!("Failed to reduce with rustfmt");
+            reduced
+        }
+        Ok(Some(formatted)) => formatted,
+    };
+    std::fs::write(&args.output, &formatted)
+        .with_context(|| format!("Failed to write reduced file to {}", args.output.display()))?;
+    info!("Reduced file written to {}", args.output.display());
+
+    if args.markdown {
+        markdown(args.output.with_extension("md"), formatted)?;
     }
 
     Ok(())
