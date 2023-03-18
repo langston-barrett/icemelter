@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
+use std::os::unix::prelude::PermissionsExt;
 use std::path::PathBuf;
+use std::process;
 use std::process::Command;
 use std::process::Stdio;
 use std::time::Duration;
@@ -32,6 +34,10 @@ struct Args {
     /// Allow introducing type/syntax/borrow errors to achieve smaller tests
     #[arg(long)]
     allow_errors: bool,
+
+    /// Run `cargo-bisect-rustc`; takes a long time, but is very helpful!
+    #[arg(short, long)]
+    bisect: bool,
 
     /// Run a single thread and show stdout, stderr of rustc
     #[arg(short, long)]
@@ -272,38 +278,120 @@ fn reduce(rs: &str, jobs: usize, chk: CmdCheck) -> Result<Vec<u8>> {
     Ok(reduced.text)
 }
 
+enum FormatResult {
+    CouldntFormat,
+    NoChange,
+    NoIce,
+    Changed(Vec<u8>),
+}
+
+fn format_result(result: &FormatResult) -> &'static str {
+    match result {
+        FormatResult::CouldntFormat => "❌ Couldn't format",
+        FormatResult::NoChange => "✅ No change, already formatted",
+        FormatResult::NoIce => "❌ Formatting removed ICE",
+        FormatResult::Changed(_) => "✅ Formatted!",
+    }
+}
+
 // NB: errors from this function are ignored as non-fatal
 // TODO: Strip leading/trailing whitespace
-fn fmt(check: &CmdCheck, file: &[u8]) -> Result<Option<Vec<u8>>> {
+fn fmt(check: &CmdCheck, file: &[u8]) -> Result<FormatResult> {
     debug!("Formatting reduced file with rustfmt");
     let tmp = tempfile::Builder::new()
         .prefix("icemelter")
         .suffix(".rs")
         .tempfile()?;
     let path = tmp.path();
-    std::fs::write(path, file)?;
+    fs::write(path, file)?;
     Command::new("rustfmt")
         .arg(path)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()?;
-    let formatted = std::fs::read(path)?;
+    let formatted = fs::read(path)?;
+    if formatted == file {
+        return Ok(FormatResult::NoChange);
+    }
     if check.interesting(&formatted)? {
-        Ok(Some(formatted))
+        Ok(FormatResult::Changed(formatted))
     } else {
-        Ok(None)
+        Ok(FormatResult::NoIce)
     }
 }
 
-fn markdown(to: PathBuf, file: Vec<u8>) -> Result<()> {
+fn bisect(file: &[u8], stderr_regex: &str) -> Result<process::Output> {
+    let rs_tmp = tempfile::Builder::new()
+        .prefix("icemelter-")
+        .suffix(".rs")
+        .tempfile()?;
+    let rs_path = rs_tmp.path();
+    fs::write(rs_path, file)?;
+    debug!("Wrote source to {}", rs_path.display());
+    let script_path = {
+        let script_tmp = tempfile::Builder::new()
+            .prefix("bisect-")
+            .suffix(".sh")
+            .tempfile()?;
+        let script_path = script_tmp.path();
+        let mut perms = fs::metadata(script_path)?.permissions();
+        perms.set_mode(0o700);
+        fs::set_permissions(script_path, perms)?;
+        fs::write(
+            script_path,
+            format!(
+                r#"#!/usr/bin/env bash
+if rustup run "${{RUSTUP_TOOLCHAIN}}" rustc {} 2>&1 | egrep '{}'; then
+  exit 1
+fi
+exit 0"#,
+                rs_path.display(),
+                stderr_regex
+            ),
+        )?;
+        script_tmp.keep()?.1
+    };
+    debug!("Wrote script to {}", script_path.display());
+    // Text file busy
+    let out = Command::new("cargo-bisect-rustc")
+        .arg("--script")
+        .arg(script_path)
+        .arg("--preserve")
+        // TODO: blank if -q was given
+        // .stdout(Stdio::null())
+        // .stderr(Stdio::null())
+        .output()
+        .context("Failed to run cargo-bisect-rustc")?;
+    Ok(out)
+}
+
+fn markdown(
+    to: PathBuf,
+    file: Vec<u8>,
+    did_reduce: bool,
+    formatted: &FormatResult,
+    bisect_report: Option<String>,
+) -> Result<()> {
     let s = String::from_utf8(file).context("When writing Markdown")?;
-    std::fs::write(
-        &to,
+    let did_format = matches!(formatted, FormatResult::Changed(_));
+    let edited = if did_reduce && did_format {
+        "Reduced, formatted"
+    } else if did_reduce {
+        "Reduced"
+    } else {
+        "Formatted"
+    };
+    let report =
         format!(
-            "Minimized with [Icemelter](https://github.com/langston-barrett/icemelter):
-```rust
+        "Triaged with [Icemelter](https://github.com/langston-barrett/icemelter). Steps performed:
+
+- Reproduced: ✅
+- Formatted: {}
+- Reduced: {}
+- Bisected: {}
+
 {}
-```
+{}
 
 <details><summary>Details</summary>
 <p>
@@ -313,25 +401,41 @@ Icemelter version: v{}
 @rustbot label +S-bug-has-mcve
 
 </p>
-</details>
-
-            ",
-            s,
-            env!("CARGO_PKG_VERSION")
-        ),
-    )
-    .with_context(|| format!("When writing Markdown report to {}", to.display()))
+</details>",
+        format_result(formatted),
+        if did_reduce { "✅" } else { "❌" },
+        if bisect_report.is_some() { "✅" } else { "❌" },
+        if did_reduce || did_format {
+            format!(
+                "{}:
+```rust
+{}
+```",
+                edited, s
+            )
+        } else {
+            String::new()
+        },
+        bisect_report.unwrap_or_default(),
+        env!("CARGO_PKG_VERSION")
+    );
+    fs::write(&to, report)
+        .with_context(|| format!("When writing Markdown report to {}", to.display()))?;
+    info!("Wrote Markdown report to {}", to.display());
+    Ok(())
 }
+
+const STEPS: usize = 5;
 
 pub fn main() -> Result<()> {
     let args = Args::parse();
     init_tracing(&args);
     let timeout = Duration::from_millis(args.timeout);
 
-    debug!("Step 1/4: Retrieving...");
+    info!("Step 1/{STEPS}: Retrieving...");
     let rs = retrieve(&args.source)?;
 
-    debug!("Step 2/4: Configuring...");
+    info!("Step 2/{STEPS}: Configuring...");
     let initial_check = check(
         args.debug,
         timeout,
@@ -359,18 +463,19 @@ pub fn main() -> Result<()> {
         Some(uninteresting_regex)
     };
 
-    debug!("Step 3/4: Reducing...");
+    info!("Step 3/{STEPS}: Reducing...");
     let chk = check(
         args.debug,
         timeout,
         args.check,
-        Some(args.interesting_stderr),
+        Some(args.interesting_stderr.clone()),
         uninteresting_stderr,
     )?;
     let reduced =
         reduce(&rs, args.jobs, chk.clone()).context("Failed when reducing the program")?;
-    let did_reduce = reduced == rs.as_bytes();
+    let did_reduce = reduced != rs.as_bytes();
     if did_reduce {
+        debug!("Reduced!");
         if args.allow_errors {
             info!("Unable to reduce! Sorry.");
             info!("If you think this test case is reducible, please file an issue!");
@@ -379,18 +484,45 @@ pub fn main() -> Result<()> {
         }
     }
 
-    debug!("Step 4/4: Formatting...");
-    let (did_format, formatted) = match fmt(&chk, &reduced) {
+    info!("Step 4/{STEPS}: Formatting...");
+    let (fmt_result, formatted) = match fmt(&chk, &reduced) {
         Err(_) => {
             warn!("Failed to format with rustfmt");
-            (false, reduced)
+            (FormatResult::CouldntFormat, reduced)
         }
-        Ok(None) => {
-            info!("Formatting with rustfmt eliminated the ICE");
-            (false, reduced)
+        Ok(r) => {
+            info!("{}", format_result(&r));
+            (r, reduced)
         }
-        Ok(Some(formatted)) => (true, formatted),
     };
+
+    let bisect_report = if args.bisect {
+        info!("Step 5/{STEPS}: Bisecting (this can take a very long time)...");
+        let out = bisect(formatted.as_slice(), &args.interesting_stderr)?;
+        std::fs::write("cargo-bisect-rustc.stdout.txt", &out.stdout)?;
+        std::fs::write("cargo-bisect-rustc.stderr.txt", &out.stderr)?;
+        info!("Wrote to cargo-bisect-rustc.std{{out,err}}.txt");
+        if !out.status.success() {
+            warn!("cargo-bisect-rustc failed");
+        }
+        let mut bisect_report = Vec::with_capacity(12);
+        let mut headings = 0;
+        let stderr_str = String::from_utf8_lossy(out.stderr.as_slice());
+        for line in stderr_str.lines() {
+            if line.starts_with("==================================================================================") {
+                headings +=1;
+            } else if headings >= 2 {
+                bisect_report.push(line);
+            }
+        }
+        Some(bisect_report.join("\n"))
+    } else {
+        warn!("Skipping bisection! Try adding --bisect.");
+        info!("Bisecting takes a long time, but it's very helpful.");
+        None
+    };
+
+    let did_format = matches!(fmt_result, FormatResult::Changed(_));
     if did_reduce || did_format {
         let edited = if did_reduce && did_format {
             "Reduced, formatted"
@@ -400,13 +532,19 @@ pub fn main() -> Result<()> {
             debug_assert!(did_format);
             "Formatted"
         };
-        std::fs::write(&args.output, &formatted)
+        fs::write(&args.output, &formatted)
             .with_context(|| format!("Failed to write file to {}", args.output.display()))?;
         info!("{} file written to {}", edited, args.output.display());
     }
 
     if args.markdown {
-        markdown(args.output.with_extension("md"), formatted)?;
+        markdown(
+            args.output.with_extension("md"),
+            formatted,
+            did_reduce,
+            &fmt_result,
+            bisect_report,
+        )?;
     }
 
     Ok(())
