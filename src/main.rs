@@ -380,22 +380,29 @@ pub fn main() -> Result<()> {
     }
 
     debug!("Step 4/4: Formatting...");
-    let formatted = match fmt(&chk, &reduced) {
+    let (did_format, formatted) = match fmt(&chk, &reduced) {
         Err(_) => {
             warn!("Failed to format with rustfmt");
-            reduced
+            (false, reduced)
         }
         Ok(None) => {
             info!("Formatting with rustfmt eliminated the ICE");
-            reduced
+            (false, reduced)
         }
-        Ok(Some(formatted)) => formatted,
+        Ok(Some(formatted)) => (true, formatted),
     };
-    if did_reduce {
-        std::fs::write(&args.output, &formatted).with_context(|| {
-            format!("Failed to write reduced file to {}", args.output.display())
-        })?;
-        info!("Reduced file written to {}", args.output.display());
+    if did_reduce || did_format {
+        let edited = if did_reduce && did_format {
+            "Reduced, formatted"
+        } else if did_reduce {
+            "Reduced"
+        } else {
+            debug_assert!(did_format);
+            "Formatted"
+        };
+        std::fs::write(&args.output, &formatted)
+            .with_context(|| format!("Failed to write file to {}", args.output.display()))?;
+        info!("{} file written to {}", edited, args.output.display());
     }
 
     if args.markdown {
