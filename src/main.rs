@@ -13,6 +13,7 @@ use regex::Regex;
 use tracing::debug;
 use tracing::error;
 use tracing::info;
+use tracing::warn;
 use tracing_subscriber::fmt::format::FmtSpan;
 use treereduce::Check;
 use treereduce::CmdCheck;
@@ -379,8 +380,12 @@ pub fn main() -> Result<()> {
 
     debug!("Step 4/4: Formatting...");
     let formatted = match fmt(&chk, &reduced) {
-        Err(_) | Ok(None) => {
-            debug!("Failed to reduce with rustfmt");
+        Err(_) => {
+            warn!("Failed to format with rustfmt");
+            reduced
+        }
+        Ok(None) => {
+            info!("Formatting with rustfmt eliminated the ICE");
             reduced
         }
         Ok(Some(formatted)) => formatted,
