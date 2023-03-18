@@ -435,6 +435,8 @@ Icemelter command line:
 
 @rustbot label +S-bug-has-mcve
 
+Do you have feedback about this report? Please [file an issue](https://github.com/langston-barrett/icemelter/issues)!
+
 </p>
 </details>",
         format_result(formatted),
