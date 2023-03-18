@@ -221,7 +221,7 @@ fn markdown(to: PathBuf, file: Vec<u8>) -> Result<()> {
 
 Icemelter version: v{}
 
-@rustbot label +S-bug-has-mcve 
+@rustbot label +S-bug-has-mcve
 
 </p>
 </details>
