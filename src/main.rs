@@ -21,6 +21,7 @@ use treereduce::NodeTypes;
 use treereduce::Original;
 
 mod formatter;
+mod github;
 
 /// A tool to minimize Rust files that trigger internal compiler errors (ICEs)
 #[derive(Clone, Debug, clap::Parser)]
@@ -65,9 +66,9 @@ struct Args {
     #[clap(flatten)]
     verbose: Verbosity<InfoLevel>,
 
-    /// Rust source file that causes the ICE
-    #[arg(value_name = "RUSTSRC", required = true)]
-    file: String,
+    /// Rust source file that causes the ICE, or rust-lang/rust issue number
+    #[arg(value_name = "ICE", required = true)]
+    source: String,
 
     /// rustc command line (without the file)
     #[arg(value_name = "CMD", default_values_t = vec![String::from("rustc")], num_args = 1..)]
@@ -98,6 +99,54 @@ fn init_tracing(args: &Args) {
 
 fn read_file(file: &str) -> Result<String> {
     fs::read_to_string(file).with_context(|| format!("Failed to read file {}", file))
+}
+
+fn retrieve(source: &str) -> Result<String> {
+    let issue_number_rx =
+        Regex::new(r"^#(\d+)").context("Internal error: bad issue number regex")?;
+    match issue_number_rx.find(source) {
+        None => {
+            debug!("Source looks like a file");
+            read_file(source)
+        }
+        Some(m) => {
+            debug!("Source looks like an issue number");
+            let issue_number_str = m.as_str();
+            debug!("Match: {}", issue_number_str);
+            let issue_number = issue_number_str[1..]
+                .parse::<usize>()
+                .context("Internal error: Couldn't extract number from issue number regex")?;
+            let gh_config = github::Config::from_env().with_context(|| {
+                format!("Missing {} environment variable", github::Config::ENV_VAR)
+            })?;
+            let issue = github::get_issue(&gh_config, issue_number)
+                .context("Failed to retrieve issue from Github")?;
+            debug_assert_eq!(issue.number, issue_number);
+            let mut reproduction = Vec::new();
+            let mut in_code_section = false;
+            let mut in_code = false;
+            for line in issue.body.lines() {
+                if in_code {
+                    if line.starts_with("```") {
+                        in_code = false;
+                        continue;
+                    }
+                    reproduction.push(line);
+                }
+                if line.starts_with("### Code") {
+                    in_code_section = true;
+                } else if line.starts_with('#') && in_code_section {
+                    in_code_section = false;
+                }
+                if (line.starts_with("```rust") || line.starts_with("```Rust")) && in_code_section {
+                    in_code = true;
+                }
+            }
+            let reproduction_str = reproduction.join("\n");
+            debug!("Reproduction:\n{}", reproduction_str);
+            Ok(reproduction_str)
+        }
+    }
 }
 
 fn parse(language: tree_sitter::Language, code: &str) -> Result<tree_sitter::Tree> {
@@ -266,10 +315,12 @@ Icemelter version: v{}
 pub fn main() -> Result<()> {
     let args = Args::parse();
     init_tracing(&args);
-    let rs = read_file(&args.file)?;
     let timeout = Duration::from_millis(args.timeout);
 
-    debug!("Step 1/3: Configuring...");
+    debug!("Step 1/4: Retrieving...");
+    let rs = retrieve(&args.source)?;
+
+    debug!("Step 2/4: Configuring...");
     let initial_check = check(
         args.debug,
         timeout,
@@ -297,7 +348,7 @@ pub fn main() -> Result<()> {
         Some(uninteresting_regex)
     };
 
-    debug!("Step 2/3: Reducing...");
+    debug!("Step 3/4: Reducing...");
     let chk = check(
         args.debug,
         timeout,
@@ -316,7 +367,7 @@ pub fn main() -> Result<()> {
         }
     }
 
-    debug!("Step 3/3: Formatting...");
+    debug!("Step 4/4: Formatting...");
     let formatted = match fmt(&chk, &reduced) {
         Err(_) | Ok(None) => {
             debug!("Failed to reduce with rustfmt");
