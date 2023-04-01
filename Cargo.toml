@@ -1,6 +1,6 @@
 [package]
 name = "icemelter"
-version = "0.3.1-rc.1"
+version = "0.3.1"
 description = "Tool to minimize files that trigger internal compiler errors (ICEs)"
 keywords = ["ice", "rustc"]
 edition = "2021"
