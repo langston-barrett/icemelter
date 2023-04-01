@@ -2,6 +2,10 @@
 
 <!-- https://keepachangelog.com/en/1.0.0/ -->
 
+## [0.3.1] - 2023-04-01
+
+- Releases now include OSX executables
+
 ## [0.3.0] - 2023-03-18
 
 ### Added
