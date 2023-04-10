@@ -263,6 +263,7 @@ fn reduce(rs: &str, jobs: usize, chk: CmdCheck) -> Result<Vec<u8>> {
     let tree = parse(language, rs).unwrap();
     let reduce_config = Config {
         check: chk,
+        delete_non_optional: true,
         jobs,
         min_reduction: 1,
         replacements: HashMap::new(),
