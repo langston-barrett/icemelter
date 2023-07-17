@@ -270,9 +270,9 @@ fn reduce(rs: &str, jobs: usize, chk: CmdCheck) -> Result<Vec<u8>> {
     };
     let (reduced, _) = treereduce::treereduce_multi_pass(
         language,
-        node_types,
+        &node_types,
         Original::new(tree, rs.as_bytes().to_vec()),
-        reduce_config,
+        &reduce_config,
         None, // max passes
     )
     .context("Failed when reducing the program")?;
