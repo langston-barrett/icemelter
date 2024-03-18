@@ -103,12 +103,9 @@ checksum = "89b2fd2a0dcf38d7971e2194b6b6eebab45ae01067456a7fd93d5547a61b70be"
 
 [[package]]
 name = "cc"
-version = "1.0.83"
+version = "1.0.90"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1174fb0b6ec23863f8b971027804a42614e347eafb0a95bf0b12cdae21fc4d0"
-dependencies = [
- "libc",
-]
+checksum = "8cd6604a82acf3039f1144f54b8eb34e91ffba622051189e71b781822d5ee1f5"
 
 [[package]]
 name = "cfg-if"
@@ -416,7 +413,7 @@ dependencies = [
  "tempfile",
  "tracing",
  "tracing-subscriber",
- "tree-sitter",
+ "tree-sitter 0.22.2",
  "tree-sitter-rust",
  "treereduce",
 ]
@@ -1101,12 +1098,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-sitter"
+version = "0.22.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bdb9c9f15eae91dcd00ee0d86a281d16e6263786991b662b34fa9632c21a046b"
+dependencies = [
+ "cc",
+ "regex",
+]
+
+[[package]]
 name = "tree-sitter-edit"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ed3213ee656e99748eca539913b5c90df3d52618d9a1714e0935013955c8031"
 dependencies = [
- "tree-sitter",
+ "tree-sitter 0.20.10",
  "tree-sitter-traversal",
 ]
 
@@ -1117,7 +1124,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0832309b0b2b6d33760ce5c0e818cb47e1d72b468516bfe4134408926fa7594"
 dependencies = [
  "cc",
- "tree-sitter",
+ "tree-sitter 0.20.10",
 ]
 
 [[package]]
@@ -1126,7 +1133,7 @@ version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df8a158225e4a4d8505f071340bba9edd109b23f01b70540dccb7c799868f307"
 dependencies = [
- "tree-sitter",
+ "tree-sitter 0.20.10",
 ]
 
 [[package]]
@@ -1142,7 +1149,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tracing",
- "tree-sitter",
+ "tree-sitter 0.20.10",
  "tree-sitter-edit",
  "wait-timeout",
 ]
