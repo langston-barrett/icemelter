@@ -283,6 +283,7 @@ enum FormatResult {
     CouldntFormat,
     NoChange,
     NoIce,
+    #[allow(dead_code)]
     Changed(Vec<u8>),
 }
 
