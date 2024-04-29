@@ -25,7 +25,7 @@ tempfile = "3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json"] }
 tree-sitter = "0.20"
-tree-sitter-rust = "0.20"
+tree-sitter-rust = "0.21"
 treereduce = "0.3"
 
 [features]
