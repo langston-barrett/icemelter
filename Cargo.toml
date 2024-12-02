@@ -13,7 +13,7 @@ repository = "https://github.com/langston-barrett/icemelter"
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
-clap-verbosity-flag = { version = "2" }
+clap-verbosity-flag = { version = "3" }
 log = "0.4"
 nu-ansi-term = { version = "0.50" }
 num_cpus = { version = "1" }
